@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f1115">
+<title>Workout Timer</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --line: #2a2f3a;
+    --text: #f2f4f8;
+    --muted: #9aa3b2;
+    --work: #22c55e;
+    --rest: #3b82f6;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --accent: #e5484d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input { font: inherit; color: inherit; }
+  .hidden { display: none !important; }
+
+  /* ---------- Header / nav ---------- */
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 1.2rem; margin: 0; letter-spacing: .02em; }
+  nav { display: flex; gap: 8px; }
+  .tab {
+    background: transparent; border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 16px; cursor: pointer; color: var(--muted);
+  }
+  .tab.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+  .card h2 { margin: 0 0 14px; font-size: 1.05rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  label { display: block; font-size: .9rem; color: var(--muted); margin-bottom: 6px; }
+  input[type=text], input[type=number] {
+    width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; font-size: 1.05rem;
+  }
+  input:focus { outline: 2px solid var(--rest); outline-offset: 1px; }
+
+  .ex-row { display: grid; grid-template-columns: 110px 1fr 44px; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .ex-row .num { color: var(--muted); font-size: .95rem; }
+  .ex-row.rest input { color: var(--rest); }
+  .icon-btn {
+    width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line);
+    background: transparent; cursor: pointer; font-size: 1.2rem; color: var(--muted);
+  }
+  .icon-btn:disabled { opacity: .3; cursor: default; }
+
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+  .row > * { flex: 1 1 160px; }
+  .btn {
+    border: none; border-radius: 12px; padding: 14px 22px; font-size: 1.05rem; font-weight: 600;
+    cursor: pointer; background: var(--line); color: var(--text);
+  }
+  .btn.primary { background: var(--work); color: #05230f; }
+  .btn.danger { background: var(--danger); color: #fff; }
+  .btn.ghost { background: transparent; border: 1px solid var(--line); }
+  .btn:disabled { opacity: .4; cursor: default; }
+
+  .summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .big-total { font-size: 2.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  .check { display: flex; gap: 10px; align-items: center; color: var(--muted); margin-top: 12px; }
+  .check input { width: 20px; height: 20px; }
+
+  /* ---------- Timer (full-screen, TV friendly) ---------- */
+  #timer {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; flex-direction: column;
+    background: var(--bg);
+    transition: background-color .3s;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  }
+  #timer.work  { background: #0c2416; }
+  #timer.rest  { background: #0c1a33; }
+  #timer.warn  { background: #3a2604; }
+  #timer.flash { background: #5a1414; }
+  #timer.done  { background: #1d1530; }
+
+  .t-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: clamp(1rem, 2.6vw, 1.8rem); }
+  .t-top .wname { font-weight: 700; }
+  .pill { padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,.1); font-variant-numeric: tabular-nums; }
+
+  .t-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 1vh; min-height: 0; }
+  .t-label { font-size: clamp(1rem, 2.4vw, 1.8rem); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+  .t-exercise { font-size: clamp(2.4rem, 9vw, 7.5rem); font-weight: 800; line-height: 1.05; word-break: break-word; }
+  .t-clock { font-size: clamp(5rem, 24vw, 19rem); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  #timer.warn .t-clock, #timer.flash .t-clock { color: var(--warn); }
+  .t-next { font-size: clamp(1.1rem, 3vw, 2.2rem); color: var(--muted); }
+  .t-next b { color: var(--text); }
+
+  .t-dots { display: flex; gap: 10px; justify-content: center; margin: 8px 0 4px; }
+  .t-dots span { width: clamp(14px, 2.4vw, 26px); height: clamp(14px, 2.4vw, 26px); border-radius: 50%; background: rgba(255,255,255,.15); }
+  .t-dots span.done { background: var(--work); }
+  .t-dots span.current { background: var(--text); }
+  .t-dots span.rest { border: 2px solid var(--rest); }
+
+  .progress { height: 10px; background: rgba(255,255,255,.12); border-radius: 999px; overflow: hidden; margin: 10px 0 14px; }
+  .progress > div { height: 100%; width: 0; background: var(--text); transition: width .25s linear; }
+
+  .t-bottom { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .t-stats { font-size: clamp(1rem, 2.6vw, 1.9rem); font-variant-numeric: tabular-nums; }
+  .t-stats b { font-size: 1.25em; }
+  .t-controls { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* ---------- History ---------- */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+  .stat { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .stat .v { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .k { color: var(--muted); font-size: .85rem; }
+
+  .chart { display: flex; align-items: flex-end; gap: 4px; height: 160px; padding-top: 20px; }
+  .bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+  .bar { width: 100%; max-width: 28px; background: var(--work); border-radius: 4px 4px 0 0; position: relative; }
+  .bar .n { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: .7rem; color: var(--muted); }
+  .bar-day { font-size: .65rem; color: var(--muted); margin-top: 6px; white-space: nowrap; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 6px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th { color: var(--muted); font-weight: 500; font-size: .85rem; }
+  td.del { width: 40px; text-align: right; }
+  .empty { color: var(--muted); text-align: center; padding: 24px 0; }
+
+  @media (max-width: 520px) {
+    .ex-row { grid-template-columns: 80px 1fr 44px; }
+    header { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Workout Timer</h1>
+  <nav>
+    <button class="tab active" data-view="setup">Workout</button>
+    <button class="tab" data-view="history">Progress</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ================= SETUP ================= -->
+  <section id="view-setup">
+    <div class="card">
+      <h2>Workout of the day</h2>
+      <label for="wname">Workout name</label>
+      <input id="wname" type="text" placeholder="e.g. Cardio" maxlength="40">
+    </div>
+
+    <div class="card">
+      <h2>Exercises (1 minute each)</h2>
+      <div id="exList"></div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn ghost" id="addEx">+ Add exercise</button>
+      </div>
+      <p class="muted" style="margin:12px 0 0;font-size:.9rem">The last minute of every round is a cooldown (rest) minute.</p>
+    </div>
+
+    <div class="card">
+      <h2>Rounds</h2>
+      <div class="row">
+        <div>
+          <label for="rounds">Number of rounds</label>
+          <input id="rounds" type="number" min="1" max="20" value="5" inputmode="numeric">
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="optBeep" checked> Beep during the last 10 seconds of each minute</label>
+      <label class="check"><input type="checkbox" id="optSpeak" checked> Announce each exercise out loud</label>
+    </div>
+
+    <div class="card summary">
+      <div>
+        <div class="muted" id="sumLine">5 rounds × 5 minutes</div>
+        <div class="big-total" id="sumTotal">25:00</div>
+      </div>
+      <button class="btn primary" id="startBtn">Start workout</button>
+    </div>
+  </section>
+
+  <!-- ================= HISTORY ================= -->
+  <section id="view-history" class="hidden">
+    <div class="card">
+      <h2>Your progress</h2>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="card">
+      <h2>Rounds completed – last 14 days</h2>
+      <div class="chart" id="chart"></div>
+    </div>
+    <div class="card">
+      <h2>Workout log</h2>
+      <div id="log"></div>
+    </div>
+    <div class="card">
+      <h2>Backup</h2>
+      <p class="muted" style="margin-top:0;font-size:.9rem">Your history is saved in this browser on this device. Export it to keep a copy or move it to another device.</p>
+      <div class="row">
+        <button class="btn ghost" id="exportBtn">Export history</button>
+        <button class="btn ghost" id="importBtn">Import history</button>
+        <input type="file" id="importFile" accept="application/json,.json" class="hidden">
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ================= TIMER ================= -->
+<section id="timer" class="hidden">
+  <div class="t-top">
+    <span class="wname" id="tName">Workout</span>
+    <span class="pill" id="tRound">Round 1 of 5</span>
+  </div>
+
+  <div class="t-center">
+    <div class="t-label" id="tLabel">Exercise 1</div>
+    <div class="t-exercise" id="tExercise">Jump rope</div>
+    <div class="t-clock" id="tClock">0:60</div>
+    <div class="t-dots" id="tDots"></div>
+    <div class="t-next" id="tNext">Next: <b>Jumping jacks</b></div>
+  </div>
+
+  <div class="progress"><div id="tProgress"></div></div>
+
+  <div class="t-bottom">
+    <div class="t-stats">
+      Total left <b id="tTotal">25:00</b>
+      &nbsp;·&nbsp; Rounds completed <b id="tDone">0</b>
+    </div>
+    <div class="t-controls">
+      <button class="btn" id="pauseBtn">Pause</button>
+      <button class="btn ghost" id="fsBtn">Full screen</button>
+      <button class="btn danger" id="stopBtn">End</button>
+    </div>
+  </div>
+</section>
+
+<script>
+(() => {
+  const MINUTE = 60;
+  const WARN_AT = 10;                       // seconds left in a minute when the countdown starts
+  const STORE_SETUP = 'wt.setup.v1';
+  const STORE_HISTORY = 'wt.history.v1';
+
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- Storage (every access guarded: private mode can throw) ----------
+  function load(key, fallback) {
+    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+    catch { return fallback; }
+  }
+  function save(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+  }
+
+  // ---------- Setup ----------
+  const defaults = {
+    name: 'Cardio',
+    exercises: ['Jump rope', 'Jumping jacks', 'Squats', 'Curls'],
+    rounds: 5, beep: true, speak: true
+  };
+  let setup = Object.assign({}, defaults, load(STORE_SETUP, {}));
+
+  function fmt(sec) {
+    sec = Math.max(0, Math.ceil(sec));
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  function renderExercises() {
+    const list = $('exList');
+    list.innerHTML = '';
+    setup.exercises.forEach((name, i) => {
+      const row = document.createElement('div');
+      row.className = 'ex-row';
+      row.innerHTML = `<span class="num">Exercise ${i + 1}</span>
+        <input type="text" maxlength="40" placeholder="Exercise name">
+        <button class="icon-btn" title="Remove" aria-label="Remove exercise ${i + 1}">×</button>`;
+      const input = row.querySelector('input');
+      input.value = name;
+      input.addEventListener('input', () => { setup.exercises[i] = input.value; persistSetup(); });
+      const del = row.querySelector('button');
+      del.disabled = setup.exercises.length <= 1;
+      del.addEventListener('click', () => { setup.exercises.splice(i, 1); renderExercises(); persistSetup(); });
+      list.appendChild(row);
+    });
+    const rest = document.createElement('div');
+    rest.className = 'ex-row rest';
+    rest.innerHTML = `<span class="num">Exercise ${setup.exercises.length + 1}</span>
+      <input type="text" value="Cooldown (rest)" disabled><span></span>`;
+    list.appendChild(rest);
+    $('addEx').disabled = setup.exercises.length >= 12;
+    updateSummary();
+  }
+
+  function roundsValue() {
+    const n = parseInt($('rounds').value, 10);
+    return Number.isFinite(n) ? Math.min(20, Math.max(1, n)) : 1;
+  }
+
+  function updateSummary() {
+    const perRound = setup.exercises.length + 1;
+    const r = roundsValue();
+    $('sumLine').textContent = `${r} round${r === 1 ? '' : 's'} × ${perRound} minutes`;
+    $('sumTotal').textContent = fmt(r * perRound * MINUTE);
+  }
+
+  function persistSetup() {
+    setup.name = $('wname').value;
+    setup.rounds = roundsValue();
+    setup.beep = $('optBeep').checked;
+    setup.speak = $('optSpeak').checked;
+    save(STORE_SETUP, setup);
+    updateSummary();
+  }
+
+  $('wname').value = setup.name;
+  $('rounds').value = setup.rounds;
+  $('optBeep').checked = setup.beep;
+  $('optSpeak').checked = setup.speak;
+  ['wname', 'rounds', 'optBeep', 'optSpeak'].forEach(id => $(id).addEventListener('input', persistSetup));
+  $('rounds').addEventListener('change', () => { $('rounds').value = roundsValue(); persistSetup(); });
+  $('addEx').addEventListener('click', () => {
+    setup.exercises.push('');
+    renderExercises(); persistSetup();
+    const inputs = $('exList').querySelectorAll('input:not([disabled])');
+    inputs[inputs.length - 1].focus();
+  });
+  renderExercises();
+
+  // ---------- Navigation ----------
+  document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => showView(tab.dataset.view)));
+  function showView(view) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+    $('view-setup').classList.toggle('hidden', view !== 'setup');
+    $('view-history').classList.toggle('hidden', view !== 'history');
+    if (view === 'history') renderHistory();
+  }
+
+  // ---------- Sound + speech ----------
+  let audio = null;
+  function unlockAudio() {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+    } catch { audio = null; }
+  }
+  function beep(freq, ms, vol = 0.25) {
+    if (!audio || !setup.beep) return;
+    const t = audio.currentTime;
+    const osc = audio.createOscillator(), gain = audio.createGain();
+    osc.type = 'sine'; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+    osc.connect(gain).connect(audio.destination);
+    osc.start(t); osc.stop(t + ms / 1000 + 0.02);
+  }
+  function say(text) {
+    if (!setup.speak || !('speechSynthesis' in window)) return;
+    try { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(text)); } catch { /* ignore */ }
+  }
+
+  // ---------- Screen wake lock (keeps the iPad/TV from sleeping) ----------
+  let wakeLock = null;
+  async function keepAwake() {
+    try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch { /* ignore */ }
+  }
+  function releaseAwake() { try { wakeLock && wakeLock.release(); } catch {} wakeLock = null; }
+  document.addEventListener('visibilitychange', () => { if (run && !run.paused && document.visibilityState === 'visible') keepAwake(); });
+
+  // ---------- Timer engine ----------
+  // A workout is a flat list of 1-minute segments: each round is the exercises followed by one rest minute.
+  let run = null;
+
+  function buildSegments(exercises, rounds) {
+    const segs = [];
+    for (let r = 1; r <= rounds; r++) {
+      exercises.forEach((name, i) => segs.push({ round: r, index: i, name: name.trim() || `Exercise ${i + 1}`, rest: false }));
+      segs.push({ round: r, index: exercises.length, name: 'Cooldown', rest: true });
+    }
+    return segs;
+  }
+
+  function elapsedSec() {
+    if (!run) return 0;
+    const now = run.paused ? run.pausedAt : performance.now();
+    return (now - run.startedAt - run.pausedTotal) / 1000;
+  }
+
+  function startWorkout() {
+    persistSetup();
+    const exercises = setup.exercises.slice();
+    const rounds = setup.rounds;
+    const segments = buildSegments(exercises, rounds);
+    run = {
+      name: (setup.name || '').trim() || 'Workout',
+      exercises, rounds, segments,
+      perRound: exercises.length + 1,
+      total: segments.length * MINUTE,
+      startedAt: performance.now(), startedDate: new Date().toISOString(),
+      paused: false, pausedAt: 0, pausedTotal: 0,
+      lastWhole: null, lastSeg: -1, saved: false, finished: false
+    };
+    unlockAudio();
+    keepAwake();
+    $('timer').className = 'work';
+    $('pauseBtn').textContent = 'Pause';
+    $('pauseBtn').classList.remove('hidden');
+    $('stopBtn').textContent = 'End';
+    $('tName').textContent = run.name;
+    buildDots();
+    tick();
+    run.interval = setInterval(tick, 200);
+  }
+
+  function buildDots() {
+    const dots = $('tDots');
+    dots.innerHTML = '';
+    for (let i = 0; i < run.perRound; i++) {
+      const d = document.createElement('span');
+      if (i === run.perRound - 1) d.classList.add('rest');
+      dots.appendChild(d);
+    }
+  }
+
+  function roundsCompleted(sec) {
+    return Math.min(run.rounds, Math.floor(Math.floor(sec) / (run.perRound * MINUTE)));
+  }
+
+  function tick() {
+    if (!run || run.finished) return;
+    const sec = elapsedSec();
+    if (sec >= run.total) return finishWorkout(true);
+
+    const segIdx = Math.floor(sec / MINUTE);
+    const seg = run.segments[segIdx];
+    const leftInMin = MINUTE - (sec - segIdx * MINUTE);
+    const wholeLeft = Math.ceil(leftInMin);
+
+    // Segment change: announce + long beep
+    if (segIdx !== run.lastSeg) {
+      if (run.lastSeg !== -1) beep(seg.rest ? 520 : 880, 600, 0.35);
+      if (seg.round > 1 && seg.index === 0 && run.lastSeg !== -1) say(`Round ${seg.round - 1} complete. Round ${seg.round}. ${seg.name}`);
+      else say(seg.rest ? 'Cooldown minute' : seg.name);
+      run.lastSeg = segIdx;
+    }
+
+    // Last-10-seconds countdown: one tick per second, higher pitch for the final 3
+    if (wholeLeft !== run.lastWhole) {
+      if (wholeLeft <= WARN_AT && wholeLeft >= 1 && !run.paused) beep(wholeLeft <= 3 ? 1320 : 660, 120);
+      run.lastWhole = wholeLeft;
+    }
+
+    const warn = wholeLeft <= WARN_AT;
+    const flash = wholeLeft <= 3 && (leftInMin % 1) > 0.5;
+    $('timer').className = run.paused ? (seg.rest ? 'rest' : 'work') : flash ? 'flash' : warn ? 'warn' : seg.rest ? 'rest' : 'work';
+
+    $('tRound').textContent = `Round ${seg.round} of ${run.rounds}`;
+    $('tLabel').textContent = run.paused ? 'Paused' : seg.rest ? `Exercise ${seg.index + 1} · Rest` : `Exercise ${seg.index + 1}`;
+    $('tExercise').textContent = seg.name;
+    $('tClock').textContent = warn ? String(wholeLeft) : fmt(leftInMin);
+    $('tTotal').textContent = fmt(run.total - sec);
+    $('tDone').textContent = roundsCompleted(sec);
+    $('tProgress').style.width = (sec / run.total * 100).toFixed(2) + '%';
+
+    const next = run.segments[segIdx + 1];
+    $('tNext').innerHTML = next ? `Next: <b></b>` : 'Last minute!';
+    if (next) $('tNext').querySelector('b').textContent = next.round !== seg.round ? `${next.name} (round ${next.round})` : next.name;
+
+    [...$('tDots').children].forEach((d, i) => {
+      d.classList.toggle('done', i < seg.index);
+      d.classList.toggle('current', i === seg.index);
+    });
+  }
+
+  function togglePause() {
+    if (!run || run.finished) return;
+    if (run.paused) {
+      run.pausedTotal += performance.now() - run.pausedAt;
+      run.paused = false;
+      $('pauseBtn').textContent = 'Pause';
+      unlockAudio(); keepAwake();
+    } else {
+      run.paused = true;
+      run.pausedAt = performance.now();
+      $('pauseBtn').textContent = 'Resume';
+      try { speechSynthesis.cancel(); } catch {}
+    }
+    tick();
+  }
+
+  function recordSession() {
+    if (!run || run.saved) return;
+    const sec = Math.min(elapsedSec(), run.total);
+    if (sec < MINUTE) return;                 // ignore false starts under a minute
+    const history = load(STORE_HISTORY, []);
+    history.push({
+      id: Date.now().toString(36),
+      date: run.startedDate,
+      name: run.name,
+      exercises: run.exercises,
+      roundsCompleted: roundsCompleted(sec),
+      roundsPlanned: run.rounds,
+      minutes: Math.round(sec / 60 * 10) / 10
+    });
+    save(STORE_HISTORY, history);
+    run.saved = true;
+  }
+
+  function finishWorkout(completed) {
+    if (!run) return;
+    if (completed) {
+      // freeze the clock at the end
+      run.paused = true; run.pausedAt = run.startedAt + run.pausedTotal + run.total * 1000;
+    }
+    recordSession();
+    run.finished = true;
+    clearInterval(run.interval);
+    releaseAwake();
+    const done = roundsCompleted(elapsedSec());
+    $('timer').className = 'done';
+    $('tLabel').textContent = completed ? 'Workout complete' : 'Workout ended';
+    $('tExercise').textContent = `Round Completed: ${done}`;
+    $('tClock').textContent = completed ? '0:00' : fmt(run.total - elapsedSec());
+    $('tNext').textContent = run.saved ? 'Saved to your progress.' : 'Less than a minute – not saved.';
+    $('tTotal').textContent = fmt(run.total - elapsedSec());
+    $('tDone').textContent = done;
+    $('pauseBtn').classList.add('hidden');
+    $('stopBtn').textContent = 'Close';
+    if (completed) { beep(880, 300, 0.35); setTimeout(() => beep(1320, 700, 0.35), 320); say(`Workout complete. ${done} rounds.`); }
+  }
+
+  function openTimer() {
+    $('timer').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    startWorkout();
+  }
+  function closeTimer() {
+    $('timer').classList.add('hidden');
+    document.body.style.overflow = '';
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    run = null;
+    renderHistory();
+  }
+
+  $('startBtn').addEventListener('click', () => {
+    if (!setup.exercises.some(e => e.trim())) { alert('Add at least one exercise name.'); return; }
+    openTimer();
+  });
+  $('pauseBtn').addEventListener('click', togglePause);
+  $('stopBtn').addEventListener('click', () => {
+    if (run && !run.finished) {
+      if (!confirm('End this workout now? Completed rounds will be saved.')) return;
+      finishWorkout(false);
+    } else closeTimer();
+  });
+  $('fsBtn').addEventListener('click', () => {
+    const el = document.documentElement;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  });
+  document.addEventListener('keydown', (e) => {
+    if ($('timer').classList.contains('hidden')) return;
+    if (e.code === 'Space') { e.preventDefault(); togglePause(); }
+  });
+
+  // ---------- History / progress ----------
+  function dayKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+
+  function renderHistory() {
+    const history = load(STORE_HISTORY, []).slice().sort((a, b) => b.date.localeCompare(a.date));
+
+    // Stats
+    const totalRounds = history.reduce((s, h) => s + (h.roundsCompleted || 0), 0);
+    const totalMin = history.reduce((s, h) => s + (h.minutes || 0), 0);
+    const weekAgo = Date.now() - 7 * 864e5;
+    const thisWeek = history.filter(h => new Date(h.date).getTime() >= weekAgo).length;
+    const days = new Set(history.map(h => dayKey(new Date(h.date))));
+    let streak = 0;
+    const cursor = new Date();
+    if (!days.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);   // streak still counts if you haven't trained yet today
+    while (days.has(dayKey(cursor))) { streak++; cursor.setDate(cursor.getDate() - 1); }
+
+    $('stats').innerHTML = '';
+    [[history.length, 'Workouts'], [totalRounds, 'Rounds completed'], [thisWeek, 'Workouts in last 7 days'],
+     [streak, streak === 1 ? 'Day streak' : 'Day streak'], [Math.round(totalMin), 'Minutes trained']]
+      .forEach(([v, k]) => {
+        const el = document.createElement('div');
+        el.className = 'stat';
+        el.innerHTML = `<div class="v">${v}</div><div class="k">${k}</div>`;
+        $('stats').appendChild(el);
+      });
+
+    // 14-day chart
+    const byDay = {};
+    history.forEach(h => { const k = dayKey(new Date(h.date)); byDay[k] = (byDay[k] || 0) + (h.roundsCompleted || 0); });
+    const chartDays = [];
+    for (let i = 13; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); chartDays.push(d); }
+    const max = Math.max(1, ...chartDays.map(d => byDay[dayKey(d)] || 0));
+    $('chart').innerHTML = '';
+    chartDays.forEach(d => {
+      const n = byDay[dayKey(d)] || 0;
+      const wrap = document.createElement('div');
+      wrap.className = 'bar-wrap';
+      wrap.title = `${d.toLocaleDateString()}: ${n} round${n === 1 ? '' : 's'}`;
+      wrap.innerHTML = `<div class="bar" style="height:${n ? Math.max(4, n / max * 100) : 0}%">${n ? `<span class="n">${n}</span>` : ''}</div>
+        <div class="bar-day">${d.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}</div>`;
+      $('chart').appendChild(wrap);
+    });
+
+    // Log table
+    const log = $('log');
+    if (!history.length) { log.innerHTML = '<div class="empty">No workouts yet. Finish one and it shows up here.</div>'; return; }
+    const table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>Date</th><th>Workout</th><th>Rounds</th><th>Minutes</th><th></th></tr></thead><tbody></tbody>';
+    const tbody = table.querySelector('tbody');
+    history.forEach(h => {
+      const tr = document.createElement('tr');
+      const d = new Date(h.date);
+      tr.innerHTML = `<td>${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}<br><span class="muted" style="font-size:.8rem">${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span></td>
+        <td class="wn"></td><td>${h.roundsCompleted} / ${h.roundsPlanned}</td><td>${h.minutes}</td>
+        <td class="del"><button class="icon-btn" aria-label="Delete">×</button></td>`;
+      tr.querySelector('.wn').textContent = h.name;
+      tr.querySelector('button').addEventListener('click', () => {
+        if (!confirm('Delete this workout from your log?')) return;
+        save(STORE_HISTORY, load(STORE_HISTORY, []).filter(x => x.id !== h.id));
+        renderHistory();
+      });
+      tbody.appendChild(tr);
+    });
+    log.innerHTML = '';
+    log.appendChild(table);
+  }
+
+  $('exportBtn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(load(STORE_HISTORY, []), null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `workout-history-${dayKey(new Date())}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  $('importBtn').addEventListener('click', () => $('importFile').click());
+  $('importFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const incoming = JSON.parse(await file.text());
+      if (!Array.isArray(incoming)) throw new Error('not a list');
+      const current = load(STORE_HISTORY, []);
+      const ids = new Set(current.map(h => h.id));
+      const valid = incoming.filter(h => h && h.id && h.date && !ids.has(h.id));
+      save(STORE_HISTORY, current.concat(valid));
+      alert(`Imported ${valid.length} workout${valid.length === 1 ? '' : 's'}.`);
+      renderHistory();
+    } catch { alert('That file is not a workout history export.'); }
+  });
+})();
+</script>
+</body>
+</html>
