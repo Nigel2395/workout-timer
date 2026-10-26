@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f1115">
 <title>Workout Timer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
 <style>
   :root {
     --bg: #0f1115;
@@ -18,6 +19,7 @@
     --warn: #f59e0b;
     --danger: #ef4444;
     --accent: #e5484d;
+    color-scheme: dark;   /* one deliberate dark look: easy on the eyes on a TV */
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
@@ -33,7 +35,9 @@
   /* ---------- Header / nav ---------- */
   header {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 14px 16px; border-bottom: 1px solid var(--line);
+    padding-block: 14px; border-bottom: 1px solid var(--line);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
   header h1 { font-size: 1.2rem; margin: 0; letter-spacing: .02em; }
   nav { display: flex; gap: 8px; }
@@ -43,7 +47,20 @@
   }
   .tab.active { background: var(--text); color: var(--bg); border-color: var(--text); }
 
-  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+  main {
+    max-width: 760px; margin: 0 auto; padding-block: 20px 60px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  /* ---------- In-page dialog (browser pop-ups are blocked in embedded views) ---------- */
+  #dlg { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  #dlg .box { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px; width: min(440px, 100%); }
+  #dlg p { margin: 0 0 18px; font-size: 1.1rem; line-height: 1.4; }
+  #dlg .row { justify-content: flex-end; }
+  #dlg .row > * { flex: 0 0 auto; }
+  textarea { width: 100%; min-height: 120px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font: 13px/1.4 ui-monospace, Menlo, monospace; color: var(--text); margin-top: 12px; }
+  .note { font-size: .9rem; color: var(--muted); min-height: 1.2em; margin: 8px 0 0; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
   .card h2 { margin: 0 0 14px; font-size: 1.05rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
   label { display: block; font-size: .9rem; color: var(--muted); margin-bottom: 6px; }
@@ -85,7 +102,10 @@
     display: flex; flex-direction: column;
     background: var(--bg);
     transition: background-color .3s;
-    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    padding-top: max(16px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
   #timer.work  { background: #0c2416; }
   #timer.rest  { background: #0c1a33; }
@@ -208,12 +228,13 @@
     </div>
     <div class="card">
       <h2>Backup</h2>
-      <p class="muted" style="margin-top:0;font-size:.9rem">Your history is saved in this browser on this device. Export it to keep a copy or move it to another device.</p>
+      <p class="muted" style="margin-top:0;font-size:.9rem">Your history is saved in this browser on this device. Copy it to keep a backup, or paste a backup here to move it to another device.</p>
       <div class="row">
-        <button class="btn ghost" id="exportBtn">Export history</button>
-        <button class="btn ghost" id="importBtn">Import history</button>
-        <input type="file" id="importFile" accept="application/json,.json" class="hidden">
+        <button class="btn ghost" id="exportBtn">Copy history</button>
+        <button class="btn ghost" id="importBtn">Import pasted history</button>
       </div>
+      <textarea id="backupText" aria-label="Backup text" placeholder="Copied history appears here. To import, paste a backup here and tap Import pasted history."></textarea>
+      <p class="note" id="backupNote" role="status"></p>
     </div>
   </section>
 </main>
@@ -247,6 +268,16 @@
     </div>
   </div>
 </section>
+
+<div id="dlg" class="hidden" role="dialog" aria-modal="true" aria-labelledby="dlgMsg">
+  <div class="box">
+    <p id="dlgMsg"></p>
+    <div class="row">
+      <button class="btn ghost" id="dlgCancel">Cancel</button>
+      <button class="btn danger" id="dlgOk">OK</button>
+    </div>
+  </div>
+</div>
 
 <script>
 (() => {
@@ -557,14 +588,14 @@
   }
 
   $('startBtn').addEventListener('click', () => {
-    if (!setup.exercises.some(e => e.trim())) { alert('Add at least one exercise name.'); return; }
+    if (!setup.exercises.some(e => e.trim())) { notify('Add at least one exercise name.'); return; }
     openTimer();
   });
   $('pauseBtn').addEventListener('click', togglePause);
-  $('stopBtn').addEventListener('click', () => {
+  $('stopBtn').addEventListener('click', async () => {
     if (run && !run.finished) {
-      if (!confirm('End this workout now? Completed rounds will be saved.')) return;
-      finishWorkout(false);
+      if (!await ask('End this workout now? Completed rounds will be saved.', 'End workout')) return;
+      if (run && !run.finished) finishWorkout(false);
     } else closeTimer();
   });
   $('fsBtn').addEventListener('click', () => {
@@ -635,8 +666,8 @@
         <td class="wn"></td><td>${h.roundsCompleted} / ${h.roundsPlanned}</td><td>${h.minutes}</td>
         <td class="del"><button class="icon-btn" aria-label="Delete">×</button></td>`;
       tr.querySelector('.wn').textContent = h.name;
-      tr.querySelector('button').addEventListener('click', () => {
-        if (!confirm('Delete this workout from your log?')) return;
+      tr.querySelector('button').addEventListener('click', async () => {
+        if (!await ask('Delete this workout from your log?', 'Delete')) return;
         save(STORE_HISTORY, load(STORE_HISTORY, []).filter(x => x.id !== h.id));
         renderHistory();
       });
@@ -646,30 +677,53 @@
     log.appendChild(table);
   }
 
+  // Backup works through copy/paste text, since some views block file downloads
   $('exportBtn').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(load(STORE_HISTORY, []), null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `workout-history-${dayKey(new Date())}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    const box = $('backupText');
+    box.value = JSON.stringify(load(STORE_HISTORY, []));
+    box.select();
+    const done = () => { $('backupNote').textContent = 'Copied. Paste it somewhere safe, like the Notes app.'; };
+    const fallback = () => {
+      try { document.execCommand('copy') ? done() : manual(); } catch { manual(); }
+    };
+    const manual = () => { $('backupNote').textContent = 'Select the text in the box and copy it.'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(box.value).then(done, fallback);
+    else fallback();
   });
-  $('importBtn').addEventListener('click', () => $('importFile').click());
-  $('importFile').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
+  $('importBtn').addEventListener('click', () => {
     try {
-      const incoming = JSON.parse(await file.text());
+      const incoming = JSON.parse($('backupText').value.trim());
       if (!Array.isArray(incoming)) throw new Error('not a list');
       const current = load(STORE_HISTORY, []);
       const ids = new Set(current.map(h => h.id));
       const valid = incoming.filter(h => h && h.id && h.date && !ids.has(h.id));
       save(STORE_HISTORY, current.concat(valid));
-      alert(`Imported ${valid.length} workout${valid.length === 1 ? '' : 's'}.`);
+      $('backupNote').textContent = `Imported ${valid.length} workout${valid.length === 1 ? '' : 's'}.`;
       renderHistory();
-    } catch { alert('That file is not a workout history export.'); }
+    } catch {
+      $('backupNote').textContent = 'That text is not a workout history backup. Paste the full text you copied with Copy history.';
+    }
   });
+
+  // ---------- In-page dialogs ----------
+  function ask(message, okLabel = 'OK', cancelLabel = 'Cancel') {
+    return new Promise(resolve => {
+      $('dlgMsg').textContent = message;
+      $('dlgOk').textContent = okLabel;
+      $('dlgCancel').textContent = cancelLabel;
+      $('dlgCancel').classList.toggle('hidden', cancelLabel === null);
+      $('dlg').classList.remove('hidden');
+      $('dlgOk').focus();
+      const close = (val) => {
+        $('dlg').classList.add('hidden');
+        $('dlgOk').onclick = $('dlgCancel').onclick = null;
+        resolve(val);
+      };
+      $('dlgOk').onclick = () => close(true);
+      $('dlgCancel').onclick = () => close(false);
+    });
+  }
+  function notify(message) { return ask(message, 'OK', null); }
 })();
 </script>
 </body>

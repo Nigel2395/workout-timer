@@ -20,8 +20,8 @@ It runs in any browser (iPad, phone, laptop) and is designed to be mirrored or c
 The **Progress** tab shows total workouts, rounds completed, workouts in the last 7 days, the current day streak,
 a 14-day chart of rounds completed and a full workout log.
 
-History is stored in the browser on the device you use (`localStorage`). Use **Export history** / **Import history**
-to back it up or move it to another device.
+History is stored in the browser on the device you use (`localStorage`). Use **Copy history** to copy a backup you can paste into Notes,
+and **Import pasted history** to restore it on another device.
 
 ## Running it
 
