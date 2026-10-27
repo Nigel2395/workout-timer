@@ -6,8 +6,9 @@ It runs in any browser (iPad, phone, laptop) and is designed to be mirrored or c
 ## How it works
 
 - Enter the exercises for the workout of the day. Each exercise lasts **1 minute**.
-- The last minute of every round is a **cooldown (rest) minute**. With 4 exercises, a round is 5 minutes.
-- Choose the number of rounds. The total workout time is added up automatically (5 rounds × 5 minutes = 25:00).
+- Every round ends with a **cooldown (rest)**. Its length is adjustable from 30 seconds to 5 minutes (default 1 minute).
+  With 4 exercises and a 1-minute cooldown, a round is 5 minutes.
+- Choose the number of rounds. The total workout time is added up automatically (5 rounds × 5:00 = 25:00).
 - During the workout:
   - The current exercise, the minute countdown and the total time left are shown in large type.
   - The screen is green during exercise minutes and blue during the cooldown minute.

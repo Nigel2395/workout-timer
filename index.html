@@ -76,7 +76,9 @@
   .preset-list { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 8px 14px; cursor: pointer; }
   .chip:hover, .chip:focus-visible { border-color: var(--text); }
+  .ex-row.rest { grid-template-columns: 110px 1fr auto; }
   .ex-row.rest input { color: var(--rest); }
+  select { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; font-size: 1.05rem; color: var(--text); }
   .icon-btn {
     width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line);
     background: transparent; cursor: pointer; font-size: 1.2rem; color: var(--muted);
@@ -164,6 +166,7 @@
 
   @media (max-width: 520px) {
     .ex-row { grid-template-columns: 80px 1fr 44px; }
+    .ex-row.rest { grid-template-columns: 80px 1fr auto; }
     header { flex-wrap: wrap; }
   }
 </style>
@@ -197,7 +200,7 @@
       <div class="row" style="margin-top:6px">
         <button class="btn ghost" id="addEx">+ Add exercise</button>
       </div>
-      <p class="muted" style="margin:12px 0 0;font-size:.9rem">The last minute of every round is a cooldown (rest) minute.</p>
+      <p class="muted" style="margin:12px 0 0;font-size:.9rem">Every round ends with a cooldown. Pick its length in the last row.</p>
     </div>
 
     <div class="card">
@@ -208,7 +211,7 @@
           <input id="rounds" type="number" min="1" max="20" value="5" inputmode="numeric">
         </div>
       </div>
-      <label class="check"><input type="checkbox" id="optBeep" checked> Beep during the last 10 seconds of each minute</label>
+      <label class="check"><input type="checkbox" id="optBeep" checked> Beep during the last 10 seconds of each exercise and cooldown</label>
       <label class="check"><input type="checkbox" id="optSpeak" checked> Announce each exercise out loud</label>
     </div>
 
@@ -310,9 +313,11 @@
   const defaults = {
     name: 'Cardio',
     exercises: ['Jump rope', 'Jumping jacks', 'Squats', 'Curls'],
-    rounds: 5, beep: true, speak: true
+    rounds: 5, restSec: 60, beep: true, speak: true
   };
   let setup = Object.assign({}, defaults, load(STORE_SETUP, {}));
+  const REST_OPTIONS = [30, 60, 90, 120, 150, 180, 240, 300];   // cooldown lengths in seconds
+  if (!REST_OPTIONS.includes(setup.restSec)) setup.restSec = 60;
 
   // Ready-made workouts that fill in the form with one tap
   const PRESETS = [
@@ -349,7 +354,17 @@
     const rest = document.createElement('div');
     rest.className = 'ex-row rest';
     rest.innerHTML = `<span class="num">Exercise ${setup.exercises.length + 1}</span>
-      <input type="text" value="Cooldown (rest)" disabled><span></span>`;
+      <input type="text" value="Cooldown" disabled aria-label="Cooldown">
+      <select id="restLen" aria-label="Cooldown length"></select>`;
+    const sel = rest.querySelector('select');
+    REST_OPTIONS.forEach(sec => {
+      const o = document.createElement('option');
+      o.value = sec;
+      o.textContent = fmt(sec);
+      sel.appendChild(o);
+    });
+    sel.value = setup.restSec;
+    sel.addEventListener('change', () => { setup.restSec = Number(sel.value); persistSetup(); });
     list.appendChild(rest);
     $('addEx').disabled = setup.exercises.length >= 12;
     updateSummary();
@@ -360,11 +375,12 @@
     return Number.isFinite(n) ? Math.min(20, Math.max(1, n)) : 1;
   }
 
+  function roundSec() { return setup.exercises.length * MINUTE + setup.restSec; }
+
   function updateSummary() {
-    const perRound = setup.exercises.length + 1;
     const r = roundsValue();
-    $('sumLine').textContent = `${r} round${r === 1 ? '' : 's'} × ${perRound} minutes`;
-    $('sumTotal').textContent = fmt(r * perRound * MINUTE);
+    $('sumLine').textContent = `${r} round${r === 1 ? '' : 's'} × ${fmt(roundSec())} per round`;
+    $('sumTotal').textContent = fmt(r * roundSec());
   }
 
   function persistSetup() {
@@ -449,13 +465,21 @@
   // A workout is a flat list of 1-minute segments: each round is the exercises followed by one rest minute.
   let run = null;
 
-  function buildSegments(exercises, rounds) {
+  function buildSegments(exercises, rounds, restSec) {
     const segs = [];
+    let start = 0;
+    const add = (seg) => { seg.start = start; start += seg.dur; segs.push(seg); };
     for (let r = 1; r <= rounds; r++) {
-      exercises.forEach((name, i) => segs.push({ round: r, index: i, name: name.trim() || `Exercise ${i + 1}`, rest: false }));
-      segs.push({ round: r, index: exercises.length, name: 'Cooldown', rest: true });
+      exercises.forEach((name, i) => add({ round: r, index: i, name: name.trim() || `Exercise ${i + 1}`, rest: false, dur: MINUTE }));
+      add({ round: r, index: exercises.length, name: 'Cooldown', rest: true, dur: restSec });
     }
     return segs;
+  }
+
+  function segmentAt(sec) {
+    let i = 0;
+    while (i < run.segments.length - 1 && sec >= run.segments[i].start + run.segments[i].dur) i++;
+    return i;
   }
 
   function elapsedSec() {
@@ -468,12 +492,13 @@
     persistSetup();
     const exercises = setup.exercises.slice();
     const rounds = setup.rounds;
-    const segments = buildSegments(exercises, rounds);
+    const segments = buildSegments(exercises, rounds, setup.restSec);
     run = {
       name: (setup.name || '').trim() || 'Workout',
       exercises, rounds, segments,
       perRound: exercises.length + 1,
-      total: segments.length * MINUTE,
+      restSec: setup.restSec,
+      total: segments.reduce((t, sg) => t + sg.dur, 0),
       startedAt: performance.now(), startedDate: new Date().toISOString(),
       paused: false, pausedAt: 0, pausedTotal: 0,
       lastWhole: null, lastSeg: -1, saved: false, finished: false
@@ -501,7 +526,8 @@
   }
 
   function roundsCompleted(sec) {
-    return Math.min(run.rounds, Math.floor(Math.floor(sec) / (run.perRound * MINUTE)));
+    const s = Math.floor(sec);
+    return run.segments.filter(sg => sg.rest && sg.start + sg.dur <= s).length;
   }
 
   function tick() {
@@ -509,16 +535,16 @@
     const sec = elapsedSec();
     if (sec >= run.total) return finishWorkout(true);
 
-    const segIdx = Math.floor(sec / MINUTE);
+    const segIdx = segmentAt(sec);
     const seg = run.segments[segIdx];
-    const leftInMin = MINUTE - (sec - segIdx * MINUTE);
+    const leftInMin = seg.start + seg.dur - sec;
     const wholeLeft = Math.ceil(leftInMin);
 
     // Segment change: announce + long beep
     if (segIdx !== run.lastSeg) {
       if (run.lastSeg !== -1) beep(seg.rest ? 520 : 880, 600, 0.35);
       if (seg.round > 1 && seg.index === 0 && run.lastSeg !== -1) say(`Round ${seg.round - 1} complete. Round ${seg.round}. ${seg.name}`);
-      else say(seg.rest ? 'Cooldown minute' : seg.name);
+      else say(seg.rest ? 'Cooldown' : seg.name);
       run.lastSeg = segIdx;
     }
 
@@ -579,6 +605,7 @@
       exercises: run.exercises,
       roundsCompleted: roundsCompleted(sec),
       roundsPlanned: run.rounds,
+      restSec: run.restSec,
       minutes: Math.round(sec / 60 * 10) / 10
     });
     save(STORE_HISTORY, history);
