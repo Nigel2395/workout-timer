@@ -72,6 +72,10 @@
 
   .ex-row { display: grid; grid-template-columns: 110px 1fr 44px; gap: 10px; align-items: center; margin-bottom: 10px; }
   .ex-row .num { color: var(--muted); font-size: .95rem; }
+  .presets { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; font-size: .9rem; }
+  .preset-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 8px 14px; cursor: pointer; }
+  .chip:hover, .chip:focus-visible { border-color: var(--text); }
   .ex-row.rest input { color: var(--rest); }
   .icon-btn {
     width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line);
@@ -119,8 +123,9 @@
 
   .t-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 1vh; min-height: 0; }
   .t-label { font-size: clamp(1rem, 2.4vw, 1.8rem); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
-  .t-exercise { font-size: clamp(2.4rem, 9vw, 7.5rem); font-weight: 800; line-height: 1.05; word-break: break-word; }
-  .t-clock { font-size: clamp(5rem, 24vw, 19rem); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .t-exercise { font-size: clamp(2rem, min(9vw, 12vh), 7.5rem); font-weight: 800; line-height: 1.05; word-break: break-word; }
+  .t-exercise.long { font-size: clamp(1.5rem, min(5.5vw, 7.5vh), 4.6rem); }
+  .t-clock { font-size: clamp(4rem, min(24vw, 34vh), 19rem); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
   #timer.warn .t-clock, #timer.flash .t-clock { color: var(--warn); }
   .t-next { font-size: clamp(1.1rem, 3vw, 2.2rem); color: var(--muted); }
   .t-next b { color: var(--text); }
@@ -180,6 +185,10 @@
       <h2>Workout of the day</h2>
       <label for="wname">Workout name</label>
       <input id="wname" type="text" placeholder="e.g. Cardio" maxlength="40">
+      <div class="presets">
+        <span class="muted">Quick load:</span>
+        <div id="presetList" class="preset-list"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -305,6 +314,15 @@
   };
   let setup = Object.assign({}, defaults, load(STORE_SETUP, {}));
 
+  // Ready-made workouts that fill in the form with one tap
+  const PRESETS = [
+    { name: 'Cardio', rounds: 5,
+      exercises: ['Jump rope', 'Jumping jacks', 'Squats', 'Curls'] },
+    { name: 'Kneeling KB Complex', rounds: 5,
+      exercises: ['5 Pullovers', '5 Curl + Press', '10 Around the World Catches + Waiter\'s Press',
+                  '5 SA Upright Row + Bent Over Row (both sides)', '10 Close Grip Push-Ups'] }
+  ];
+
   function fmt(sec) {
     sec = Math.max(0, Math.ceil(sec));
     const m = Math.floor(sec / 60), s = sec % 60;
@@ -318,7 +336,7 @@
       const row = document.createElement('div');
       row.className = 'ex-row';
       row.innerHTML = `<span class="num">Exercise ${i + 1}</span>
-        <input type="text" maxlength="40" placeholder="Exercise name">
+        <input type="text" maxlength="60" placeholder="Exercise name">
         <button class="icon-btn" title="Remove" aria-label="Remove exercise ${i + 1}">×</button>`;
       const input = row.querySelector('input');
       input.value = name;
@@ -357,6 +375,21 @@
     save(STORE_SETUP, setup);
     updateSummary();
   }
+
+  function applyPreset(p) {
+    setup.exercises = p.exercises.slice();
+    $('wname').value = p.name;
+    $('rounds').value = p.rounds;
+    renderExercises();
+    persistSetup();
+  }
+  PRESETS.forEach(p => {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.textContent = p.name;
+    b.addEventListener('click', () => applyPreset(p));
+    $('presetList').appendChild(b);
+  });
 
   $('wname').value = setup.name;
   $('rounds').value = setup.rounds;
@@ -502,6 +535,7 @@
     $('tRound').textContent = `Round ${seg.round} of ${run.rounds}`;
     $('tLabel').textContent = run.paused ? 'Paused' : seg.rest ? `Exercise ${seg.index + 1} · Rest` : `Exercise ${seg.index + 1}`;
     $('tExercise').textContent = seg.name;
+    $('tExercise').classList.toggle('long', seg.name.length > 22);
     $('tClock').textContent = warn ? String(wholeLeft) : fmt(leftInMin);
     $('tTotal').textContent = fmt(run.total - sec);
     $('tDone').textContent = roundsCompleted(sec);
