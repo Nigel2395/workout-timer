@@ -10,9 +10,9 @@ It runs in any browser (iPad, phone, laptop) and is designed to be mirrored or c
   With 4 exercises and a 1-minute cooldown, a round is 5 minutes.
 - Choose the number of rounds. The total workout time is added up automatically (5 rounds × 5:00 = 25:00).
 - During the workout:
-  - The current exercise, the minute countdown and the total time left are shown in large type.
-  - The screen is green during exercise minutes and blue during the cooldown minute.
-  - The **last 10 seconds** of every minute switch to a big orange countdown with a beep each second, flashing red for the final 3.
+  - The current exercise, its countdown and the total time left are shown in large type.
+  - The screen is green during exercise minutes and blue during the cooldown.
+  - The **last 10 seconds** of every exercise and cooldown switch to a big orange countdown with a beep each second, flashing red for the final 3.
   - Exercises can be announced out loud, and the number of **rounds completed** is shown on screen.
 - When a workout finishes (or is ended early after at least a minute) the date, rounds completed and minutes are saved.
 
